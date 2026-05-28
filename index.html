@@ -402,118 +402,6 @@
 
     .app-toast.show { display: block; }
 
-    .print-only { display: none; }
-
-    #printSheet {
-      display: none;
-    }
-
-    @media (max-width: 880px) {
-      .top-grid, .summary-grid { grid-template-columns: 1fr; }
-      .form-grid, .split, .big-punches { grid-template-columns: 1fr; }
-      .break-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      header { display: grid; }
-    }
-
-    @media print {
-      @page { size: letter; margin: .45in; }
-
-      body {
-        background: #fff !important;
-        color: #000;
-      }
-
-      .app { display: none !important; }
-      #printSheet {
-        display: block !important;
-        font-family: Arial, sans-serif;
-        color: #000;
-      }
-
-      .print-title {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 14px;
-        border-bottom: 2px solid #000;
-        padding-bottom: 10px;
-        margin-bottom: 12px;
-      }
-
-      .print-title h1 {
-        font-size: 22px;
-        margin: 0 0 5px;
-        letter-spacing: normal;
-      }
-
-      .print-meta {
-        font-size: 11px;
-        line-height: 1.45;
-      }
-
-      .print-summary {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 6px;
-        margin: 12px 0;
-      }
-
-      .print-summary div {
-        border: 1px solid #000;
-        padding: 7px;
-        font-size: 11px;
-      }
-
-      .print-summary strong {
-        display: block;
-        font-size: 17px;
-        margin-top: 4px;
-      }
-
-      #printSheet table {
-        min-width: 0;
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 10px;
-      }
-
-      #printSheet th, #printSheet td {
-        border: 1px solid #000;
-        padding: 5px;
-        vertical-align: top;
-      }
-
-      #printSheet th {
-        background: #eee !important;
-        color: #000;
-        text-transform: none;
-        letter-spacing: normal;
-        font-size: 10px;
-      }
-
-      .print-notes {
-        margin-top: 12px;
-        border: 1px solid #000;
-        min-height: 48px;
-        padding: 7px;
-        font-size: 11px;
-      }
-
-      .signatures {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 28px;
-        margin-top: 36px;
-        font-size: 11px;
-      }
-
-      .sig-line {
-        border-top: 1px solid #000;
-        padding-top: 5px;
-      }
-
-      .no-print { display: none !important; }
-    }
   </style>
 </head>
 <body>
@@ -521,7 +409,7 @@
     <header>
       <div>
         <h1>Weekly Time Tracker</h1>
-        <p class="subtitle">Employees can clock in, clock out, track breaks and lunch, review weekly totals, then export a clean PDF timesheet to email.</p>
+        <p class="subtitle">Employees can clock in, clock out, track breaks and lunch, review weekly totals, then download a clean PDF timesheet to email.</p>
       </div>
       <div class="pill" id="weekPill">Week</div>
     </header>
@@ -588,7 +476,7 @@
         </div>
         <div class="actions" style="margin-top:0;">
           <button class="primary" id="addManualBtn" type="button">Add / Edit Shift</button>
-          <button class="ghost" id="exportPdfBtn" type="button">Export PDF</button>
+          <button class="ghost" id="exportPdfBtn" type="button">Download PDF</button>
           <button class="ghost" id="emailBtn" type="button">Open Email</button>
           <button class="ghost" id="downloadCsvBtn" type="button">Download CSV Backup</button>
           <button class="danger" id="clearWeekBtn" type="button">Clear Week</button>
@@ -615,7 +503,7 @@
 
       <div class="notice">
         <div>ⓘ</div>
-        <div><strong>PDF export:</strong> Click “Export PDF,” then choose <strong>Save as PDF</strong> in the browser print window. Use “Open Email” to start an email, then attach the saved PDF.</div>
+        <div><strong>PDF export:</strong> Click <strong>Download PDF</strong> to save a finished PDF file directly. Use “Open Email” to start an email, then attach the downloaded PDF.</div>
       </div>
     </section>
 
@@ -626,7 +514,6 @@
     </section>
   </main>
 
-  <section id="printSheet" aria-hidden="true"></section>
 
   <div class="modal-backdrop" id="shiftModal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -681,6 +568,8 @@
 
   <div class="app-toast" id="toast"></div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
   <script>
     (function () {
       "use strict";
@@ -733,7 +622,6 @@
         breakEditor: $("breakEditor"),
         addBreakRowBtn: $("addBreakRowBtn"),
         resetFormBtn: $("resetFormBtn"),
-        printSheet: $("printSheet"),
         toast: $("toast")
       };
 
@@ -1215,81 +1103,222 @@
         toast("Week cleared.");
       }
 
-      function buildPrintSheet() {
+      function pdfText(value) {
+        return String(value == null ? "" : value)
+          .replaceAll("\u2013", "-")
+          .replaceAll("\u2014", "-")
+          .replaceAll("\u2018", "'")
+          .replaceAll("\u2019", "'")
+          .replaceAll("\u201c", '"')
+          .replaceAll("\u201d", '"')
+          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+      }
+
+      function fileSafe(value) {
+        return String(value || "employee")
+          .trim()
+          .replace(/[^a-z0-9_-]+/gi, "_")
+          .replace(/^_+|_+$/g, "") || "employee";
+      }
+
+      function downloadPdf() {
         saveState();
+
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          toast("PDF library did not load. Check internet access, reload the page, and try again.");
+          return;
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
+
+        if (typeof doc.autoTable !== "function") {
+          toast("PDF table library did not load. Check internet access, reload the page, and try again.");
+          return;
+        }
+
         const totals = calculateTotals();
-        const employeeName = state.employeeName || "Employee";
+        const page = {
+          width: doc.internal.pageSize.getWidth(),
+          height: doc.internal.pageSize.getHeight(),
+          margin: 36
+        };
+        const usableWidth = page.width - page.margin * 2;
         const weekRange = formatDate(state.weekStart, { month: "short", day: "numeric", year: "numeric" }) + " - " + formatDate(weekEndISO(), { month: "short", day: "numeric", year: "numeric" });
+        const generated = new Date().toLocaleString();
+        const employeeName = state.employeeName || "Employee";
 
-        const rows = totals.entries.map(e => {
-          const problems = validateEntry(e);
-          const breaks = (e.breaks || []).filter(b => b.start || b.end).map(b => {
-            const duration = b.start && b.end ? " (" + formatMinutes(minutesBetween(e.date, b.start, b.end)) + ")" : "";
-            return (b.type || "Break") + " " + (b.start || "??") + "-" + (b.end || "open") + duration;
-          }).join("; ");
-          return `
-            <tr>
-              <td>${escapeHTML(formatDate(e.date, { weekday: "short", month: "numeric", day: "numeric" }))}</td>
-              <td>${escapeHTML(e.clockIn || "")}</td>
-              <td>${escapeHTML(e.clockOut || "")}</td>
-              <td>${escapeHTML(breaks)}</td>
-              <td>${escapeHTML(formatMinutes(totalBreakMinutes(e)))}</td>
-              <td>${escapeHTML(formatMinutes(netMinutes(e)))}</td>
-              <td>${escapeHTML([e.label, e.notes, problems.length ? "Warnings: " + problems.join(" ") : ""].filter(Boolean).join(" | "))}</td>
-            </tr>
-          `;
-        }).join("");
+        function setText(size, style) {
+          doc.setFont("helvetica", style || "normal");
+          doc.setFontSize(size);
+        }
 
-        els.printSheet.innerHTML = `
-          <div class="print-title">
-            <div>
-              <h1>Weekly Time Sheet</h1>
-              <div class="print-meta"><strong>Week:</strong> ${escapeHTML(weekRange)}</div>
-            </div>
-            <div class="print-meta">
-              <div><strong>Employee:</strong> ${escapeHTML(employeeName)}</div>
-              <div><strong>ID/Initials:</strong> ${escapeHTML(state.employeeId || "")}</div>
-              <div><strong>Department/Route:</strong> ${escapeHTML(state.department || "")}</div>
-              <div><strong>Generated:</strong> ${escapeHTML(new Date().toLocaleString())}</div>
-            </div>
-          </div>
+        function drawHeader(isContinuation) {
+          const y = page.margin;
+          setText(18, "bold");
+          doc.text(isContinuation ? "Weekly Time Sheet - continued" : "Weekly Time Sheet", page.margin, y);
+          setText(9, "normal");
+          doc.text("Week: " + pdfText(weekRange), page.margin, y + 16);
+          doc.text("Generated: " + pdfText(generated), page.margin, y + 29);
 
-          <div class="print-summary">
-            <div>Regular Hours<strong>${escapeHTML(decimalHours(totals.regular))}</strong></div>
-            <div>Overtime Hours<strong>${escapeHTML(decimalHours(totals.overtime))}</strong></div>
-            <div>Break/Lunch<strong>${escapeHTML(decimalHours(totals.breaks))}</strong></div>
-            <div>Weekly Total<strong>${escapeHTML(decimalHours(totals.net))}</strong></div>
-          </div>
+          const rightX = page.margin + usableWidth - 275;
+          setText(9, "bold");
+          doc.text("Employee:", rightX, y);
+          doc.text("ID/Initials:", rightX, y + 13);
+          doc.text("Department/Route:", rightX, y + 26);
+          setText(9, "normal");
+          doc.text(doc.splitTextToSize(pdfText(employeeName), 190), rightX + 92, y);
+          doc.text(doc.splitTextToSize(pdfText(state.employeeId || ""), 190), rightX + 92, y + 13);
+          doc.text(doc.splitTextToSize(pdfText(state.department || ""), 190), rightX + 92, y + 26);
 
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Clock In</th>
-                <th>Clock Out</th>
-                <th>Break/Lunch Times</th>
-                <th>Break Total</th>
-                <th>Net Time</th>
-                <th>Notes / Warnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows || `<tr><td colspan="7">No time entries logged for this week.</td></tr>`}
-            </tbody>
-          </table>
+          doc.setLineWidth(1.2);
+          doc.line(page.margin, y + 42, page.width - page.margin, y + 42);
+          return y + 57;
+        }
 
-          <div class="print-notes"><strong>Employee Notes / Corrections:</strong><br>${escapeHTML(state.employeeNotes || "")}</div>
+        function drawSummary(y) {
+          const gap = 8;
+          const boxW = (usableWidth - gap * 3) / 4;
+          const items = [
+            ["Regular Hours", decimalHours(totals.regular)],
+            ["Overtime Hours", decimalHours(totals.overtime)],
+            ["Break/Lunch", decimalHours(totals.breaks)],
+            ["Weekly Total", decimalHours(totals.net)]
+          ];
+          items.forEach((item, i) => {
+            const x = page.margin + i * (boxW + gap);
+            doc.setDrawColor(30);
+            doc.rect(x, y, boxW, 42);
+            setText(8, "bold");
+            doc.text(pdfText(item[0]), x + 7, y + 13);
+            setText(15, "bold");
+            doc.text(pdfText(item[1]), x + 7, y + 32);
+          });
+          return y + 58;
+        }
 
-          <div class="signatures">
-            <div class="sig-line">Employee Signature / Date</div>
-            <div class="sig-line">Manager Review / Date</div>
-          </div>
-        `;
+        function pageFooter() {
+          const count = doc.getNumberOfPages();
+          for (let i = 1; i <= count; i++) {
+            doc.setPage(i);
+            setText(8, "normal");
+            doc.text("Page " + i + " of " + count, page.width - page.margin - 62, page.height - 18);
+          }
+        }
+
+        function breakText(entry) {
+          const parts = (entry.breaks || [])
+            .filter(b => b.start || b.end)
+            .map(b => {
+              const duration = b.start && b.end ? " (" + formatMinutes(minutesBetween(entry.date, b.start, b.end)) + ")" : "";
+              return (b.type || "Break") + " " + (b.start || "??") + "-" + (b.end || "open") + duration;
+            });
+          return parts.length ? parts.join("\n") : "None";
+        }
+
+        function rowValues(entry) {
+          const problems = validateEntry(entry);
+          const notes = [entry.label, entry.notes, problems.length ? "Warnings: " + problems.join(" ") : ""].filter(Boolean).join(" | ");
+          return [
+            formatDate(entry.date, { weekday: "short", month: "numeric", day: "numeric" }),
+            entry.clockIn || "",
+            entry.clockOut || "Open",
+            breakText(entry),
+            formatMinutes(totalBreakMinutes(entry)),
+            formatMinutes(netMinutes(entry)),
+            notes || ""
+          ].map(pdfText);
+        }
+
+        const bodyRows = totals.entries.length
+          ? totals.entries.map(rowValues)
+          : [["No entries", "", "", "", "", "", "No time entries logged for this week."]];
+
+        const firstTableY = drawSummary(drawHeader(false));
+
+        doc.autoTable({
+          startY: firstTableY,
+          margin: { top: 96, right: page.margin, bottom: 44, left: page.margin },
+          head: [["Date", "In", "Out", "Break/Lunch Times", "Break", "Net", "Notes / Warnings"]],
+          body: bodyRows,
+          theme: "grid",
+          styles: {
+            font: "helvetica",
+            fontSize: 8,
+            cellPadding: 4,
+            valign: "top",
+            overflow: "linebreak",
+            lineColor: [60, 60, 60],
+            lineWidth: 0.4,
+            textColor: [0, 0, 0]
+          },
+          headStyles: {
+            fillColor: [238, 238, 238],
+            textColor: [0, 0, 0],
+            fontStyle: "bold",
+            lineColor: [40, 40, 40],
+            lineWidth: 0.5
+          },
+          columnStyles: {
+            0: { cellWidth: 72 },
+            1: { cellWidth: 44 },
+            2: { cellWidth: 44 },
+            3: { cellWidth: 178 },
+            4: { cellWidth: 50 },
+            5: { cellWidth: 50 },
+            6: { cellWidth: usableWidth - 72 - 44 - 44 - 178 - 50 - 50 }
+          },
+          willDrawPage: function (data) {
+            if (data.pageNumber > 1) drawHeader(true);
+          }
+        });
+
+        let y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : firstTableY) + 14;
+        const notes = pdfText(state.employeeNotes || "");
+        const notesLines = doc.splitTextToSize(notes || " ", usableWidth - 12);
+        const notesHeight = Math.max(44, 22 + notesLines.length * 9);
+        const signatureHeight = 55;
+
+        if (y + notesHeight + signatureHeight > page.height - page.margin) {
+          doc.addPage("letter", "landscape");
+          y = drawHeader(true) + 4;
+        }
+
+        doc.setDrawColor(30);
+        doc.rect(page.margin, y, usableWidth, notesHeight);
+        setText(8, "bold");
+        doc.text("Employee Notes / Corrections:", page.margin + 6, y + 13);
+        setText(8, "normal");
+        doc.text(notesLines, page.margin + 6, y + 27, { lineHeightFactor: 1.1 });
+        y += notesHeight + 42;
+
+        doc.line(page.margin, y, page.margin + 300, y);
+        doc.line(page.margin + 380, y, page.margin + usableWidth, y);
+        setText(8, "normal");
+        doc.text("Employee Signature / Date", page.margin, y + 12);
+        doc.text("Manager Review / Date", page.margin + 380, y + 12);
+
+        pageFooter();
+
+        const filename = "timesheet_" + fileSafe(employeeName) + "_week_" + state.weekStart + ".pdf";
+        const blob = doc.output("blob");
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.rel = "noopener";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        window.setTimeout(function () {
+          URL.revokeObjectURL(url);
+          link.remove();
+        }, 1000);
+        toast("PDF downloaded: " + filename);
       }
 
       function exportPdf() {
-        buildPrintSheet();
-        window.print();
+        downloadPdf();
       }
 
       function openEmail() {
